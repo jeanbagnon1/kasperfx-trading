@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="theme-color" content="#080b12"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="KasperFX"/>
+<meta name="description" content="AI Trading Signal Analyzer - SSS Liquidity Sweep XAU/USD"/>
+<title>KasperFX · AI Signals</title>
+
+<!-- PWA Manifest inline -->
+<script>
+const manifestData = {
+  name: "KasperFX Trading",
+  short_name: "KasperFX",
+  description: "AI Signal Analyzer - SSS Liquidity Sweep",
+  start_url: ".",
+  display: "standalone",
+  background_color: "#080b12",
+  theme_color: "#080b12",
+  orientation: "portrait",
+  icons: [
+    { src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%23080b12'/%3E%3Ctext x='50%25' y='55%25' font-size='110' text-anchor='middle' dominant-baseline='middle'%3E📈%3C/text%3E%3C/svg%3E", sizes: "192x192", type: "image/svg+xml" },
+    { src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%23080b12'/%3E%3Ctext x='50%25' y='55%25' font-size='300' text-anchor='middle' dominant-baseline='middle'%3E📈%3C/text%3E%3C/svg%3E", sizes: "512x512", type: "image/svg+xml" }
+  ]
+};
+const blob = new Blob([JSON.stringify(manifestData)], {type: 'application/json'});
+const manifestURL = URL.createObjectURL(blob);
+const link = document.createElement('link');
+link.rel = 'manifest';
+link.href = manifestURL;
+document.head.appendChild(link);
+</script>
+
+<!-- Service Worker -->
+<script>
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'kasperfx-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => { self.clients.claim(); });
+    self.addEventListener('fetch', e => {
+      if (e.request.url.includes('api.anthropic.com')) return;
+      e.respondWith(
+        caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('/')))
+      );
+    });
+  `;
+  const swBlob = new Blob([swCode], {type: 'application/javascript'});
+  const swURL = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL).catch(() => {});
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
+
+<style>
+  :root {
+    --bg: #080b12;
+    --bg2: #0d1018;
+    --bg3: #141820;
+    --border: #1c2333;
+    --border2: #252f42;
+    --text: #e8edf5;
+    --text2: #8899b0;
+    --text3: #4a5568;
+    --green: #00e676;
+    --red: #ff3d57;
+    --blue: #4fc3f7;
+    --purple: #b39ddb;
+    --gold: #ffd54f;
+    --orange: #ffb74d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow-x: hidden; background: var(--bg); }
+  body { font-family: 'JetBrains Mono', monospace; color: var(--text); padding-bottom: 80px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* Animations */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+  @keyframes scanline { 0%{transform:translateY(-100%);} 100%{transform:translateY(100vh);} }
+  @keyframes glow { 0%,100%{box-shadow:0 0 8px #00e67633;} 50%{box-shadow:0 0 20px #00e67666;} }
+  @keyframes slideIn { from{transform:translateX(-10px);opacity:0;} to{transform:translateX(0);opacity:1;} }
+
+  /* Scanline bg effect */
+  body::before {
+    content:''; position:fixed; top:0; left:0; right:0; bottom:0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,230,118,0.01) 2px, rgba(0,230,118,0.01) 4px);
+    pointer-events:none; z-index:0;
+  }
+
+  /* Header */
+  .header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(8,11,18,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header-logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px; font-weight: 800; letter-spacing: -0.5px;
+    background: linear-gradient(90deg, var(--green), var(--blue));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .header-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 20px; padding: 4px 10px; font-size: 10px;
+    color: var(--text2); letter-spacing: 1px;
+  }
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green); animation: pulse 1.5s infinite;
+  }
+
+  /* Main content */
+  main { padding: 16px; position: relative; z-index: 1; }
+
+  /* Clock Card */
+  .clock-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 14px;
+    position: relative; overflow: hidden;
+  }
+  .clock-card::after {
+    content:''; position:absolute; top:0; right:0;
+    width:120px; height:120px;
+    background: radial-gradient(circle, rgba(0,230,118,0.04) 0%, transparent 70%);
+  }
+  .clock-label { color: var(--text3); font-size: 9px; letter-spacing: 3px; margin-bottom: 6px; }
+  .clock-time { font-size: 30px; font-weight: 700; letter-spacing: 1px; color: var(--text); }
+  .clock-date { color: var(--text2); font-size: 11px; margin-top: 2px; }
+
+  /* Kill Zone Bar */
+  .kz-bar {
+    display: flex; gap: 6px; margin-top: 14px; flex-wrap: nowrap; overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .kz-bar::-webkit-scrollbar { display:none; }
+  .kz-item {
+    flex: 1; min-width: 70px; border-radius: 8px; padding: 7px 8px;
+    border: 1px solid var(--border); background: var(--bg);
+    transition: all 0.3s;
+  }
+  .kz-item.active {
+    animation: glow 2s infinite;
+  }
+  .kz-name { font-size: 9px; font-weight: 600; letter-spacing: 0.5px; }
+  .kz-hours { color: var(--text3); font-size: 8px; margin-top: 2px; }
+
+  /* Active KZ Banner */
+  .kz-banner {
+    border-radius: 12px; padding: 12px 14px;
+    display: flex; align-items: center; gap: 10;
+    margin-top: 10px;
+  }
+  .kz-banner-icon { font-size: 20px; }
+  .kz-banner-title { font-size: 11px; letter-spacing: 2px; margin-bottom: 2px; }
+  .kz-banner-name { font-size: 15px; font-weight: 700; font-family: 'Syne', sans-serif; }
+
+  /* Tab Nav */
+  .tab-nav {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+    background: rgba(13,16,24,0.95);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tab-btn {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 3px; padding: 10px 4px;
+    border: none; background: transparent; cursor: pointer;
+    color: var(--text3); font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; letter-spacing: 0.5px; transition: color 0.2s;
+  }
+  .tab-btn.active { color: var(--green); }
+  .tab-btn .tab-icon { font-size: 20px; }
+  .tab-btn .tab-indicator {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--green); opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .tab-btn.active .tab-indicator { opacity: 1; }
+
+  /* Section title */
+  .section-title {
+    color: var(--text3); font-size: 9px; letter-spacing: 3px;
+    margin-bottom: 12px; padding-left: 2px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px; margin-bottom: 14px;
+    animation: slideIn 0.3s ease;
+  }
+
+  /* Strategy steps */
+  .step-item {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .step-item:active { transform: scale(0.98); }
+  .step-header { display: flex; align-items: center; gap: 10px; }
+  .step-num { font-size: 9px; font-weight: 700; letter-spacing: 2px; }
+  .step-title { font-size: 13px; font-weight: 600; flex: 1; color: var(--text); font-family: 'Syne', sans-serif; }
+  .step-arrow { color: var(--text3); font-size: 10px; transition: transform 0.2s; }
+  .step-desc {
+    color: var(--text2); font-size: 12px; line-height: 1.7;
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border); display: none;
+  }
+  .step-item.open .step-desc { display: block; }
+  .step-item.open .step-arrow { transform: rotate(90deg); }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border2);
+    border-radius: 16px; padding: 32px 16px;
+    text-align: center; cursor: pointer;
+    transition: all 0.3s; margin-bottom: 14px;
+    background: var(--bg);
+  }
+  .upload-zone.has-image { padding: 10px; border-style: solid; border-color: #00e67633; }
+  .upload-zone.dragging { border-color: var(--green); background: rgba(0,230,118,0.04); }
+  .upload-zone img { width: 100%; border-radius: 10px; max-height: 260px; object-fit: contain; display: block; }
+  .upload-icon { font-size: 44px; margin-bottom: 10px; }
+  .upload-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; font-family: 'Syne', sans-serif; color: var(--text); }
+  .upload-sub { font-size: 11px; color: var(--text3); }
+
+  /* Analyze button */
+  .btn-analyze {
+    width: 100%; padding: 16px; border-radius: 14px; border: none;
+    background: linear-gradient(135deg, #00e676, #00b0ff);
+    color: #080b12; font-weight: 700; font-size: 15px;
+    font-family: 'Syne', sans-serif; letter-spacing: 1px;
+    cursor: pointer; transition: all 0.2s; margin-bottom: 14px;
+  }
+  .btn-analyze:disabled { background: var(--bg3); color: var(--text3); cursor: not-allowed; }
+  .btn-analyze:active:not(:disabled) { transform: scale(0.98); }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2px solid rgba(8,11,18,0.3);
+    border-top-color: #080b12;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 8px;
+  }
+
+  /* Signal result */
+  .signal-result { animation: fadeUp 0.4s ease; }
+
+  .action-banner {
+    border-radius: 14px; padding: 16px;
+    margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .action-label { font-size: 9px; letter-spacing: 2px; margin-bottom: 4px; }
+  .action-text { font-size: 20px; font-weight: 800; font-family: 'Syne', sans-serif; }
+
+  .dir-badge {
+    border-radius: 8px; padding: 8px 16px;
+    font-weight: 700; font-size: 18px; font-family: 'Syne', sans-serif;
+  }
+  .conf-badge {
+    border-radius: 8px; padding: 6px 14px;
+    font-weight: 700; font-size: 12px;
+  }
+
+  /* Grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+  /* Level cell */
+  .level-cell {
+    border-radius: 10px; padding: 12px;
+  }
+  .level-label { font-size: 9px; letter-spacing: 1px; color: var(--text3); margin-bottom: 4px; }
+  .level-value { font-size: 16px; font-weight: 700; }
+  .level-sub { font-size: 9px; color: var(--text3); margin-top: 2px; }
+
+  /* SMC check items */
+  .check-item {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 12px; font-size: 12px;
+  }
+
+  /* RR bar */
+  .rr-row {
+    background: rgba(179,157,219,0.1); border: 1px solid rgba(179,157,219,0.2);
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 10px;
+  }
+
+  /* Analysis text */
+  .analysis-text { color: var(--text2); font-size: 13px; line-height: 1.7; }
+
+  /* Warning item */
+  .warning-item {
+    font-size: 12px; color: var(--text2);
+    padding: 8px 12px; border-left: 2px solid rgba(255,183,77,0.4);
+    margin-bottom: 6px; line-height: 1.5;
+  }
+
+  /* History table */
+  .hist-row {
+    display: grid; grid-template-columns: 1fr auto auto auto;
+    gap: 8px; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .hist-row:last-child { border-bottom: none; }
+  .hist-date { color: var(--text2); font-size: 11px; }
+  .hist-pips { font-weight: 700; }
+
+  /* Stats row */
+  .stats-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .stat-card {
+    flex: 1; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 10px; text-align: center;
+  }
+  .stat-val { font-size: 20px; font-weight: 700; font-family: 'Syne', sans-serif; }
+  .stat-label { font-size: 9px; color: var(--text3); letter-spacing: 1px; margin-top: 2px; }
+
+  /* Checklist */
+  .cl-item {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px 14px; margin-bottom: 8px;
+    cursor: pointer; transition: all 0.2s; user-select: none;
+  }
+  .cl-item.checked { border-color: rgba(0,230,118,0.3); background: rgba(0,230,118,0.04); }
+  .cl-check {
+    width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+    border: 2px solid var(--border2); background: transparent;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; font-size: 13px;
+  }
+  .cl-item.checked .cl-check { background: var(--green); border-color: var(--green); }
+  .cl-text { font-size: 13px; color: var(--text2); transition: color 0.2s; line-height: 1.4; }
+  .cl-item.checked .cl-text { color: var(--text); }
+
+  .ready-banner {
+    border-radius: 12px; padding: 14px;
+    background: rgba(0,230,118,0.1); border: 1px solid rgba(0,230,118,0.3);
+    color: var(--green); text-align: center; font-weight: 700; font-size: 14px;
+    font-family: 'Syne', sans-serif; margin-top: 4px;
+    animation: glow 2s infinite;
+  }
+
+  /* Error */
+  .error-msg {
+    background: rgba(255,61,87,0.1); border: 1px solid rgba(255,61,87,0.3);
+    border-radius: 12px; padding: 14px; color: var(--red);
+    font-size: 13px; margin-bottom: 14px; line-height: 1.5;
+  }
+
+  /* Page sections */
+  .page { display: none; }
+  .page.active { display: block; animation: fadeUp 0.3s ease; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-logo">KasperFX</div>
+  <div class="header-badge">
+    <div class="live-dot"></div>
+    <span>LIVE</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ====== PAGE: LIVE ====== -->
+  <section id="page-live" class="page active">
+    <div class="clock-card">
+      <div class="clock-label">HORLOGE MARCHÉ</div>
+      <div class="clock-time" id="clockTime">--:--:--</div>
+      <div class="clock-date" id="clockDate">UTC+1</div>
+      <div class="kz-bar" id="kzBar"></div>
+      <div id="kzBanner"></div>
+    </div>
+
+    <!-- Checklist -->
+    <div class="card">
+      <div class="section-title">CHECKLIST AVANT TRADE</div>
+      <div id="checklistScore" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <span style="color:var(--text2);font-size:12px;">Conditions validées</span>
+        <span id="scoreTag" style="font-size:12px;font-weight:700;padding:3px 12px;border-radius:6px;">0/7</span>
+      </div>
+      <div id="checklist"></div>
+      <div id="readyBanner" style="display:none;" class="ready-banner">🚀 SETUP VALIDE — PRÊT À TRADER</div>
+    </div>
+  </section>
+
+  <!-- ====== PAGE: SIGNAL ====== -->
+  <section id="page-signal" class="page">
+    <div class="section-title">ANALYSER UN GRAPHIQUE</div>
+
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div id="uploadPlaceholder">
+        <div class="upload-icon">📸</div>
+        <div class="upload-title">Upload ta capture</div>
+        <div class="upload-sub">TradingView M1 · PNG / JPG</div>
+        <div style="margin-top:8px;color:var(--text3);font-size:10px;">ou prends une photo du graphique</div>
+      </div>
+      <img id="uploadPreview" style="display:none;"/>
+    </div>
+
+    <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none;" onchange="handleFileSelect(event)"/>
+
+    <button class="btn-analyze" id="analyzeBtn" disabled onclick="analyzeChart()">
+      🔍 ANALYSER LE GRAPHIQUE
+    </button>
+
+    <div id="errorMsg" class="error-msg" style="display:none;"></div>
+
+    <div id="signalResult" style="display:none;" class="signal-result"></div>
+  </section>
+
+  <!-- ====== PAGE: STRATÉGIE ====== -->
+  <section id="page-strategy" class="page">
+    <div class="section-title">SSS LIQUIDITY SWEEP — RÈGLES</div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--green)">100%</div>
+        <div class="stat-label">WIN RATE</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--purple)">7.4:1</div>
+        <div class="stat-label">RR MOYEN</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--blue)">+271</div>
+        <div class="stat-label">PIPS TOTAL</div>
+      </div>
+    </div>
+
+    <div id="strategySteps"></div>
+
+    <div class="card" style="margin-top:6px;">
+      <div class="section-title">KILL ZONES OPTIMALES</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border-radius:10px;border:1px solid rgba(255,61,87,0.3);">
+          <span style="font-size:18px;">⭐</span>
+          <div>
+            <div style="color:var(--red);font-size:11px;font-weight:700;">NY AFTERNOON (MEILLEURE)</div>
+            <div style="color:var(--text2);font-size:11px;">15:30 – 17:00 UTC+1 · 6/7 trades</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border-radius:10px;border:1px solid rgba(79,195,247,0.2);">
+          <span style="font-size:18px;">🔵</span>
+          <div>
+            <div style="color:var(--blue);font-size:11px;font-weight:700;">NY OPEN</div>
+            <div style="color:var(--text2);font-size:11px;">13:00 – 15:00 UTC+1</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border-radius:10px;border:1px solid rgba(255,183,77,0.2);">
+          <span style="font-size:18px;">🟡</span>
+          <div>
+            <div style="color:var(--orange);font-size:11px;font-weight:700;">LONDON OPEN</div>
+            <div style="color:var(--text2);font-size:11px;">07:00 – 09:00 UTC+1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== PAGE: HISTORIQUE ====== -->
+  <section id="page-history" class="page">
+    <div class="section-title">HISTORIQUE TRADES · XAU/USD</div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--green)">7/7</div>
+        <div class="stat-label">GAGNANTS</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--gold)">+271</div>
+        <div class="stat-label">PIPS</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--purple)">7.4:1</div>
+        <div class="stat-label">RR MOY.</div>
+      </div>
+    </div>
+
+    <div class="card" id="historyList"></div>
+  </section>
+
+</main>
+
+<!-- Tab Navigation -->
+<nav class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('live', this)">
+    <span class="tab-icon">📡</span>
+    <span>LIVE</span>
+    <div class="tab-indicator"></div>
+  </button>
+  <button class="tab-btn" onclick="switchTab('signal', this)">
+    <span class="tab-icon">🔍</span>
+    <span>SIGNAL</span>
+    <div class="tab-indicator"></div>
+  </button>
+  <button class="tab-btn" onclick="switchTab('strategy', this)">
+    <span class="tab-icon">📋</span>
+    <span>STRATÉGIE</span>
+    <div class="tab-indicator"></div>
+  </button>
+  <button class="tab-btn" onclick="switchTab('history', this)">
+    <span class="tab-icon">📊</span>
+    <span>HISTORIQUE</span>
+    <div class="tab-indicator"></div>
+  </button>
+</nav>
+
+<script>
+// ═══════════════════════════════════
+// DATA
+// ═══════════════════════════════════
+const KILL_ZONES = [
+  { name: "Asian", short:"ASI", start:0, end:360, color:"#4a9eff" },
+  { name: "London", short:"LON", start:420, end:540, color:"#ffb74d" },
+  { name: "NY Open", short:"NYO", start:780, end:900, color:"#4fc3f7" },
+  { name: "NY PM ⭐", short:"NY★", start:930, end:1020, color:"#ff3d57", hot:true },
+];
+
+const CHECKLIST_ITEMS = [
+  "Je suis dans une Kill Zone active",
+  "Un range de consolidation est visible (≥10 bougies)",
+  "Le prix a fait un sweep au-delà du range",
+  "La bougie de sweep est revenue dans le range",
+  "Pas d'actualité macro majeure en cours",
+  "Le RR calculé est ≥ 2:1",
+  "SL placé au-delà du point extrême du sweep",
+];
+
+const STRATEGY_STEPS = [
+  { num:"01", icon:"🕐", color:"#ff3d57", title:"Identifier la Kill Zone",
+    desc:"Opérer uniquement dans les Kill Zones actives. La NY Afternoon (15h30–17h00 UTC+1) est la plus performante sur XAU/USD — 6 trades sur 7 ont eu lieu dans cette fenêtre." },
+  { num:"02", icon:"📦", color:"#ffb74d", title:"Tracer le range de consolidation",
+    desc:"Repérer un range clair avec des hauts et bas égaux sur minimum 10–15 bougies. Ce range contient la liquidité (stops des retail traders) que le Smart Money va chasser." },
+  { num:"03", icon:"⚡", color:"#b39ddb", title:"Attendre le SSS — Sweep du range",
+    desc:"Le prix spike au-delà du haut OU du bas du range pour chasser les stops. C'est la manipulation. La bougie spike dépasse le range puis revient rapidement à l'intérieur." },
+  { num:"04", icon:"✅", color:"#00e676", title:"Confirmation de reversal",
+    desc:"Après le sweep : attendre une bougie de clôture DANS le range + rejet clair. Confluence bonus : Fibonacci 0.5 ou 0.618 sur le niveau du sweep = signal plus fort." },
+  { num:"05", icon:"🎯", color:"#4fc3f7", title:"Entrée & Gestion",
+    desc:"LONG si sweep bas → SHORT si sweep haut. SL = 3-5 pips au-delà du sweep. TP1 = milieu du range (50%), TP2 = opposé du range. RR minimum 2:1." },
+];
+
+const HISTORY = [
+  { date:"24 Fév 2026", time:"16:05", dir:"LONG", entry:"5124.40", sl:"5118.08", tp:"5133.35", rr:"2.2:1", pips:"+8.95" },
+  { date:"05 Fév 2026", time:"16:45", dir:"SHORT", entry:"4830.00", sl:"4841.62", tp:"4746.65", rr:"7.2:1", pips:"+83.35" },
+  { date:"06 Jan 2026", time:"16:45", dir:"LONG", entry:"4471.00", sl:"4464.71", tp:"4479.77", rr:"1.4:1", pips:"+8.77" },
+  { date:"12 Jan 2026", time:"15:30", dir:"LONG", entry:"4592.00", sl:"4585.72", tp:"4624.95", rr:"5.2:1", pips:"+32.95" },
+  { date:"05 Jan 2026", time:"16:00", dir:"SHORT", entry:"4452.00", sl:"4455.41", tp:"4407.00", rr:"13:1", pips:"+45.00" },
+  { date:"12 Déc 2025", time:"16:56", dir:"SHORT", entry:"4317.40", sl:"4317.59", tp:"4263.18", rr:"290:1", pips:"+54.22" },
+  { date:"12 Déc 2025", time:"15:54", dir:"LONG", entry:"4342.69", sl:"4337.54", tp:"4381.21", rr:"7.5:1", pips:"+38.52" },
+];
+
+// ═══════════════════════════════════
+// TABS
+// ═══════════════════════════════════
+function switchTab(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ═══════════════════════════════════
+// CLOCK & KILL ZONES
+// ═══════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+  const local = new Date(utcMs + 3600000); // UTC+1
+  const h = String(local.getHours()).padStart(2,'0');
+  const m = String(local.getMinutes()).padStart(2,'0');
+  const s = String(local.getSeconds()).padStart(2,'0');
+  document.getElementById('clockTime').textContent = `${h}:${m}:${s}`;
+  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const months = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  document.getElementById('clockDate').textContent = `${days[local.getDay()]} ${local.getDate()} ${months[local.getMonth()]} · UTC+1`;
+
+  const mins = local.getHours() * 60 + local.getMinutes();
+  const kzBar = document.getElementById('kzBar');
+  if (!kzBar._built) {
+    kzBar._built = true;
+    kzBar.innerHTML = KILL_ZONES.map(kz => `
+      <div class="kz-item" id="kz-${kz.short}" style="border-color:${kz.color}22;">
+        <div class="kz-name" style="color:${kz.color}">${kz.short}</div>
+        <div class="kz-hours">${Math.floor(kz.start/60)}:${String(kz.start%60).padStart(2,'0')}–${Math.floor(kz.end/60)}:${String(kz.end%60).padStart(2,'0')}</div>
+      </div>`).join('');
+  }
+
+  const activeKZ = KILL_ZONES.find(kz => mins >= kz.start && mins < kz.end);
+  KILL_ZONES.forEach(kz => {
+    const el = document.getElementById('kz-' + kz.short);
+    if (!el) return;
+    if (activeKZ && activeKZ.short === kz.short) {
+      el.classList.add('active');
+      el.style.background = kz.color + '18';
+      el.style.borderColor = kz.color + '88';
+    } else {
+      el.classList.remove('active');
+      el.style.background = 'var(--bg)';
+      el.style.borderColor = kz.color + '22';
+    }
+  });
+
+  const banner = document.getElementById('kzBanner');
+  if (activeKZ) {
+    banner.innerHTML = `
+      <div class="kz-banner" style="background:${activeKZ.color}18;border:1px solid ${activeKZ.color}44;margin-top:10px;">
+        <span class="kz-banner-icon">${activeKZ.hot ? '🔴' : '🟢'}</span>
+        <div>
+          <div class="kz-banner-title" style="color:${activeKZ.color}">KILL ZONE ACTIVE</div>
+          <div class="kz-banner-name" style="color:${activeKZ.color}">${activeKZ.name}</div>
+          ${activeKZ.hot ? '<div style="color:var(--text3);font-size:10px;margin-top:1px;">ZONE OPTIMALE — MEILLEURE PERFORMANCE</div>' : ''}
+        </div>
+      </div>`;
+  } else {
+    const next = KILL_ZONES.find(kz => kz.start > mins) || KILL_ZONES[0];
+    const wait = next.start > mins ? next.start - mins : 1440 - mins + next.start;
+    banner.innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:var(--bg3);border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <span style="color:var(--text3);font-size:12px;">Hors Kill Zone</span>
+        <span style="color:var(--text2);font-size:11px;">Prochaine: <span style="color:${next.color}">${next.name}</span> dans ~${wait}min</span>
+      </div>`;
+  }
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ═══════════════════════════════════
+// CHECKLIST
+// ═══════════════════════════════════
+const checked = CHECKLIST_ITEMS.map(() => false);
+function buildChecklist() {
+  const el = document.getElementById('checklist');
+  el.innerHTML = CHECKLIST_ITEMS.map((item, i) => `
+    <div class="cl-item ${checked[i] ? 'checked' : ''}" onclick="toggleCheck(${i})">
+      <div class="cl-check">${checked[i] ? '✓' : ''}</div>
+      <span class="cl-text">${item}</span>
+    </div>`).join('');
+  const score = checked.filter(Boolean).length;
+  const tag = document.getElementById('scoreTag');
+  tag.textContent = `${score}/7`;
+  tag.style.background = score >= 6 ? 'rgba(0,230,118,0.15)' : 'rgba(255,183,77,0.1)';
+  tag.style.color = score >= 6 ? 'var(--green)' : 'var(--orange)';
+  tag.style.border = `1px solid ${score >= 6 ? 'rgba(0,230,118,0.3)' : 'rgba(255,183,77,0.2)'}`;
+  document.getElementById('readyBanner').style.display = score >= 6 ? 'block' : 'none';
+}
+function toggleCheck(i) {
+  checked[i] = !checked[i];
+  buildChecklist();
+}
+buildChecklist();
+
+// ═══════════════════════════════════
+// STRATEGY STEPS
+// ═══════════════════════════════════
+document.getElementById('strategySteps').innerHTML = STRATEGY_STEPS.map((s, i) => `
+  <div class="step-item" id="step-${i}" onclick="toggleStep(${i})">
+    <div class="step-header">
+      <span style="font-size:20px;">${s.icon}</span>
+      <span class="step-num" style="color:${s.color}">ÉTAPE ${s.num}</span>
+      <span class="step-title">${s.title}</span>
+      <span class="step-arrow">▶</span>
+    </div>
+    <div class="step-desc">${s.desc}</div>
+  </div>`).join('');
+
+function toggleStep(i) {
+  const el = document.getElementById('step-' + i);
+  el.classList.toggle('open');
+}
+
+// ═══════════════════════════════════
+// HISTORY
+// ═══════════════════════════════════
+document.getElementById('historyList').innerHTML = `
+  <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+    <span class="section-title" style="margin:0;">TRADES PASSÉS</span>
+    <span style="color:var(--green);font-size:12px;font-weight:700;">7/7 WIN ✅</span>
+  </div>` +
+  HISTORY.map(h => `
+    <div class="hist-row">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text);">${h.date}</div>
+        <div class="hist-date">${h.time} · RR ${h.rr}</div>
+      </div>
+      <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:5px;
+        background:${h.dir==='LONG'?'rgba(0,230,118,0.12)':'rgba(255,61,87,0.12)'};
+        color:${h.dir==='LONG'?'var(--green)':'var(--red)'};">${h.dir}</span>
+      <span style="color:var(--text2);font-size:11px;">${h.entry}</span>
+      <span class="hist-pips" style="color:var(--green)">${h.pips}</span>
+    </div>`).join('');
+
+// ═══════════════════════════════════
+// FILE UPLOAD
+// ═══════════════════════════════════
+let imageBase64 = null;
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const src = ev.target.result;
+    imageBase64 = src.split(',')[1];
+    const preview = document.getElementById('uploadPreview');
+    const placeholder = document.getElementById('uploadPlaceholder');
+    const zone = document.getElementById('uploadZone');
+    preview.src = src;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+    zone.classList.add('has-image');
+    document.getElementById('analyzeBtn').disabled = false;
+    document.getElementById('signalResult').style.display = 'none';
+    document.getElementById('errorMsg').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ═══════════════════════════════════
+// AI ANALYSIS
+// ═══════════════════════════════════
+const SYSTEM_PROMPT = `Tu es un expert trading Smart Money Concepts (SMC) spécialisé dans la stratégie SSS Liquidity Sweep sur XAU/USD en scalping M1/M5.
+
+La stratégie SSS :
+1. RANGE : consolidation claire (≥10 bougies), hauts et bas égaux
+2. SWEEP : spike au-delà du haut ou bas du range pour chasser les stops
+3. DIRECTION : LONG si sweep du bas, SHORT si sweep du haut
+4. ENTRÉE : clôture de confirmation dans le range après le sweep
+5. SL : au-delà du point extrême du sweep
+6. TP1 : milieu du range (50%), TP2 : extrémité opposée
+7. KILL ZONES : NY Afternoon 15h30-17h00 UTC+1 (meilleure), London Open 07-09h, NY Open 13-15h
+8. RR minimum : 2:1
+9. CONFLUENCE BONUS : Fib 0.5 ou 0.618
+
+Réponds UNIQUEMENT en JSON valide, sans backticks ni texte autour :
+{"setup_detected":bool,"confidence":"FORT"|"MOYEN"|"FAIBLE"|"AUCUN","direction":"LONG"|"SHORT"|"NEUTRE","entry_zone":"prix ou N/A","stop_loss":"prix ou N/A","tp1":"prix ou N/A","tp2":"prix ou N/A","rr_estimate":"ex:3.5:1 ou N/A","kill_zone_active":bool,"kill_zone_name":"nom ou Hors Kill Zone","timeframe_detected":"M1 etc","asset_detected":"XAU/USD etc","range_identified":bool,"sweep_detected":bool,"sweep_side":"HAUT"|"BAS"|"AUCUN","fib_confluence":bool,"analysis":"max 3 phrases FR","warnings":["..."],"action":"ENTRER MAINTENANT"|"ATTENDRE CONFIRMATION"|"SETUP EN FORMATION"|"PAS DE SETUP"|"EVITER CE TRADE"}`;
+
+async function analyzeChart() {
+  if (!imageBase64) return;
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Analyse IA en cours...';
+  document.getElementById('errorMsg').style.display = 'none';
+  document.getElementById('signalResult').style.display = 'none';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: SYSTEM_PROMPT,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } },
+            { type: 'text', text: 'Analyse ce graphique et génère le signal SSS en JSON.' }
+          ]
+        }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content?.find(b => b.type === 'text')?.text || '';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    renderSignal(parsed);
+  } catch(err) {
+    document.getElementById('errorMsg').textContent = '⚠️ Erreur d\'analyse. Vérifiez que l\'image est lisible et réessayez.';
+    document.getElementById('errorMsg').style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔄 ANALYSER À NOUVEAU';
+  }
+}
+
+function renderSignal(s) {
+  const actionColors = {
+    'ENTRER MAINTENANT': { bg:'rgba(0,230,118,0.12)', border:'rgba(0,230,118,0.4)', color:'#00e676' },
+    'ATTENDRE CONFIRMATION': { bg:'rgba(255,183,77,0.1)', border:'rgba(255,183,77,0.3)', color:'#ffb74d' },
+    'SETUP EN FORMATION': { bg:'rgba(79,195,247,0.1)', border:'rgba(79,195,247,0.3)', color:'#4fc3f7' },
+    'PAS DE SETUP': { bg:'rgba(255,61,87,0.08)', border:'rgba(255,61,87,0.2)', color:'#ff3d57' },
+    'EVITER CE TRADE': { bg:'rgba(255,61,87,0.1)', border:'rgba(255,61,87,0.3)', color:'#ff3d57' },
+  };
+  const ac = actionColors[s.action] || { bg:'rgba(179,157,219,0.1)', border:'rgba(179,157,219,0.3)', color:'#b39ddb' };
+  const dirColor = s.direction === 'LONG' ? '#00e676' : s.direction === 'SHORT' ? '#ff3d57' : '#8899b0';
+  const confColor = s.confidence === 'FORT' ? '#00e676' : s.confidence === 'MOYEN' ? '#ffb74d' : s.confidence === 'FAIBLE' ? '#ff3d57' : '#8899b0';
+
+  const chk = (val) => val ? '✅' : '❌';
+
+  const html = `
+    <!-- ACTION BANNER -->
+    <div style="background:${ac.bg};border:1px solid ${ac.border};border-radius:14px;padding:16px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="color:${ac.color};font-size:9px;letter-spacing:2px;margin-bottom:4px;">DÉCISION</div>
+          <div style="color:${ac.color};font-size:18px;font-weight:800;font-family:'Syne',sans-serif;">${s.action}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${s.direction !== 'NEUTRE' ? `<div style="background:${dirColor}22;border:1px solid ${dirColor}55;color:${dirColor};border-radius:8px;padding:7px 14px;font-weight:700;font-size:16px;font-family:'Syne',sans-serif;">${s.direction === 'LONG' ? '▲ LONG' : '▼ SHORT'}</div>` : ''}
+          <div style="background:${confColor}22;border:1px solid ${confColor}44;color:${confColor};border-radius:8px;padding:7px 12px;font-weight:700;font-size:12px;">${s.confidence}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTEXT -->
+    <div class="grid-3" style="margin-bottom:12px;">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:11px 10px;">
+        <div style="color:var(--text3);font-size:8px;letter-spacing:1px;margin-bottom:3px;">💰 ACTIF</div>
+        <div style="color:var(--text);font-size:11px;font-weight:600;">${s.asset_detected||'—'}</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:11px 10px;">
+        <div style="color:var(--text3);font-size:8px;letter-spacing:1px;margin-bottom:3px;">⏱ TF</div>
+        <div style="color:var(--text);font-size:11px;font-weight:600;">${s.timeframe_detected||'—'}</div>
+      </div>
+      <div style="background:${s.kill_zone_active?'rgba(0,230,118,0.08)':'var(--bg2)'};border:1px solid ${s.kill_zone_active?'rgba(0,230,118,0.3)':'var(--border)'};border-radius:10px;padding:11px 10px;">
+        <div style="color:var(--text3);font-size:8px;letter-spacing:1px;margin-bottom:3px;">🎯 KZ</div>
+        <div style="color:${s.kill_zone_active?'#00e676':'var(--text)'};font-size:10px;font-weight:600;">${s.kill_zone_active?'ACTIVE':'INACTIF'}</div>
+      </div>
+    </div>
+
+    <!-- LEVELS -->
+    ${s.setup_detected && s.direction !== 'NEUTRE' ? `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;">
+      <div class="section-title">NIVEAUX DU TRADE</div>
+      <div class="grid-2">
+        <div class="level-cell" style="background:var(--bg3);border-radius:10px;">
+          <div class="level-label">ENTRÉE</div>
+          <div class="level-value" style="color:var(--text);">${s.entry_zone||'N/A'}</div>
+        </div>
+        <div class="level-cell" style="background:rgba(255,61,87,0.08);border-radius:10px;">
+          <div class="level-label">STOP LOSS</div>
+          <div class="level-value" style="color:var(--red);">${s.stop_loss||'N/A'}</div>
+        </div>
+        <div class="level-cell" style="background:rgba(0,230,118,0.07);border-radius:10px;">
+          <div class="level-label">TP1 (50%)</div>
+          <div class="level-value" style="color:var(--green);">${s.tp1||'N/A'}</div>
+        </div>
+        <div class="level-cell" style="background:rgba(79,195,247,0.07);border-radius:10px;">
+          <div class="level-label">TP2 (FULL)</div>
+          <div class="level-value" style="color:var(--blue);">${s.tp2||'N/A'}</div>
+        </div>
+      </div>
+      ${s.rr_estimate && s.rr_estimate !== 'N/A' ? `
+      <div class="rr-row">
+        <span style="color:var(--text3);font-size:11px;">RISK/REWARD</span>
+        <span style="color:var(--purple);font-weight:700;font-size:16px;">${s.rr_estimate}</span>
+      </div>` : ''}
+    </div>` : ''}
+
+    <!-- SMC CHECKLIST -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;">
+      <div class="section-title">CHECKLIST SMC DÉTECTÉE</div>
+      <div class="grid-2">
+        ${[
+          ['Range identifié', s.range_identified],
+          ['Sweep détecté', s.sweep_detected],
+          ['Kill Zone active', s.kill_zone_active],
+          ['Confluence Fib', s.fib_confluence],
+          [`Sweep ${s.sweep_side||'—'}`, s.sweep_side && s.sweep_side !== 'AUCUN'],
+          ['Setup validé', s.setup_detected],
+        ].map(([label, val]) => `
+          <div class="check-item" style="border-color:${val?'rgba(0,230,118,0.2)':'var(--border)'};">
+            <span>${chk(val)}</span>
+            <span style="color:${val?'var(--text)':'var(--text3)'};font-size:11px;">${label}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- ANALYSIS -->
+    ${s.analysis ? `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;">
+      <div class="section-title">🤖 ANALYSE IA</div>
+      <div class="analysis-text">${s.analysis}</div>
+    </div>` : ''}
+
+    <!-- WARNINGS -->
+    ${s.warnings && s.warnings.length > 0 ? `
+    <div style="background:rgba(255,183,77,0.06);border:1px solid rgba(255,183,77,0.2);border-radius:14px;padding:14px;">
+      <div class="section-title" style="color:var(--orange);">⚠️ POINTS DE VIGILANCE</div>
+      ${s.warnings.map(w => `<div class="warning-item">${w}</div>`).join('')}
+    </div>` : ''}
+  `;
+
+  const result = document.getElementById('signalResult');
+  result.innerHTML = html;
+  result.style.display = 'block';
+  result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+</body>
+</html>
